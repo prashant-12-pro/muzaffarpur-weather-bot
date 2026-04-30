@@ -2,50 +2,53 @@ import requests
 import os
 from datetime import datetime
 
-# Credentials
+# 1. Credentials
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 def check_weather():
-    print("Fetching weather data for Muzaffarpur...")
-    url = "https://api.open-meteo.com/v1/forecast?latitude=26.12&longitude=85.39&hourly=precipitation_probability,wind_speed_10m&forecast_days=2"
+    print("📡 Fetching full 48-hour forecast for Muzaffarpur...")
+    # Coordinates for Muzaffarpur: 26.12°N, 85.39°E
+    url = "https://api.open-meteo.com/v1/forecast?latitude=26.12&longitude=85.39&hourly=temperature_2m,precipitation_probability,wind_speed_10m&forecast_days=2"
     
     try:
         response = requests.get(url)
         data = response.json()
         
         times = data['hourly']['time']
+        temps = data['hourly']['temperature_2m']
         rain_probs = data['hourly']['precipitation_probability']
         wind_speeds = data['hourly']['wind_speed_10m']
 
-        alert_list = []
+        update_list = []
 
+        # Loop through every single hour (no IF condition)
         for i in range(len(times)):
-            rain = rain_probs[i]
-            wind = wind_speeds[i]
+            raw_time = datetime.fromisoformat(times[i])
+            clean_time = raw_time.strftime("%d %b, %H:%M")
             
-            if rain > 50 or wind > 13:
-                raw_time = datetime.fromisoformat(times[i])
-                clean_time = raw_time.strftime("%d %b, %H:%M")
-                alert_list.append(f"⏰ {clean_time} -> 🌧️ {rain}% | 💨 {wind}km/h")
+            # Formatting: Time -> Temp | Rain% | Wind
+            line = f"⏰ {clean_time}: {temps[i]}°C | 🌧️ {rain_probs[i]}% | 💨 {wind_speeds[i]}km/h"
+            update_list.append(line)
 
-        if alert_list:
-            header = "⚠️ *Weather Alert (Next 48h):*\n\n"
-            full_message = header + "\n".join(alert_list[:15]) # Send first 15 alerts
-            send_telegram(full_message)
-            print(f"Success! Alert sent to Telegram with {len(alert_list)} data points.")
-        else:
-            print("No alerts found for the next 48 hours.")
+        # Telegram has a character limit, so we will send the first 24 hours 
+        # in the first message and the next 24 in the second to ensure you see everything.
+        header = "📍 *Weather Update: Muzaffarpur (Next 48h)*\n\n"
+        
+        day1_msg = header + "📅 *Next 24 Hours:*\n" + "\n".join(update_list[:24])
+        day2_msg = "📅 *Following 24 Hours:*\n" + "\n".join(update_list[24:])
+
+        send_telegram(day1_msg)
+        send_telegram(day2_msg)
+        print("Success: Full 48-hour update sent to Muzaffarpur.")
             
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"❌ Error: {e}")
 
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    r = requests.post(url, json=payload)
-    print(f"Telegram API response: {r.status_code}")
+    requests.post(url, json=payload)
 
-# --- CRITICAL: THE SCRIPT RUNS HERE ---
 if __name__ == "__main__":
     check_weather()
